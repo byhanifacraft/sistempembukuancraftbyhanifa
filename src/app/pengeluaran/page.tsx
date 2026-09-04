@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { formatIndonesianDate, formatIndonesianDateTime, formatRupiah } from "@/lib/utils";
 import { Plus, WalletCards, Boxes, Receipt, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { requireOwnerRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function ExpensesOverviewPage() {
+  await requireOwnerRole();
   const [purchasesData, expensesData] = await Promise.all([
     getPurchases({ limit: 5 }),
     getExpenses({ limit: 5 }),

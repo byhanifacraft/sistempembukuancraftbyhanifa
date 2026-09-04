@@ -5,12 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { formatIndonesianDate, formatIndonesianDateTime, formatRupiah } from "@/lib/utils";
 import { ArrowDownLeft, ArrowUpRight, History, Wallet } from "lucide-react";
+import { requireOwnerRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function CashFlowReportPage(props: {
   searchParams: Promise<{ startDate?: string; endDate?: string }>;
 }) {
+  await requireOwnerRole();
   const searchParams = await props.searchParams;
   const startDate = searchParams?.startDate || undefined;
   const endDate = searchParams?.endDate || undefined;

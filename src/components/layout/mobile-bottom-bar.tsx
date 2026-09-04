@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Plus, TrendingUp, Menu } from "lucide-react";
+import { LayoutDashboard, Package, Plus, TrendingUp, ReceiptText, Menu } from "lucide-react";
 import { useMobileNav } from "@/components/layout/mobile-nav-context";
 import { cn } from "@/lib/utils";
+import { SessionUser } from "@/lib/auth";
 
-export function MobileBottomBar() {
+export function MobileBottomBar({ user }: { user?: SessionUser | null }) {
   const pathname = usePathname();
   const { openMobileNav } = useMobileNav();
+  const isOwner = user?.role === "OWNER";
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#F2DBE3] md:hidden px-3 py-1.5 flex items-center justify-around shadow-[0_-4px_16px_rgba(224,104,138,0.08)]">
@@ -44,16 +46,29 @@ export function MobileBottomBar() {
         <span className="text-[10px] font-bold text-[#9B2C54] mt-0.5">Kasir</span>
       </Link>
 
-      <Link
-        href="/laporan/laba-rugi"
-        className={cn(
-          "flex flex-col items-center justify-center py-1 px-2 rounded-md text-[10px] font-medium transition-colors",
-          pathname.startsWith("/laporan") ? "text-[#E0688A] font-bold" : "text-[#75656B] hover:text-[#9B2C54]"
-        )}
-      >
-        <TrendingUp className="w-4 h-4 mb-0.5" />
-        <span>Laporan</span>
-      </Link>
+      {isOwner ? (
+        <Link
+          href="/laporan/laba-rugi"
+          className={cn(
+            "flex flex-col items-center justify-center py-1 px-2 rounded-md text-[10px] font-medium transition-colors",
+            pathname.startsWith("/laporan") ? "text-[#E0688A] font-bold" : "text-[#75656B] hover:text-[#9B2C54]"
+          )}
+        >
+          <TrendingUp className="w-4 h-4 mb-0.5" />
+          <span>Laporan</span>
+        </Link>
+      ) : (
+        <Link
+          href="/transaksi"
+          className={cn(
+            "flex flex-col items-center justify-center py-1 px-2 rounded-md text-[10px] font-medium transition-colors",
+            pathname === "/transaksi" ? "text-[#E0688A] font-bold" : "text-[#75656B] hover:text-[#9B2C54]"
+          )}
+        >
+          <ReceiptText className="w-4 h-4 mb-0.5" />
+          <span>Riwayat</span>
+        </Link>
+      )}
 
       <button
         type="button"

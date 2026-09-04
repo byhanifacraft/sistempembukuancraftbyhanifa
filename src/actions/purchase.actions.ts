@@ -6,7 +6,7 @@ import { ItemType, MutationType, PaymentMethod, PaymentStatus } from "@prisma/cl
 import { format } from "date-fns";
 import { revalidatePath } from "next/cache";
 import { serializePrisma } from "@/lib/serialize";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, requireOwnerRole } from "@/lib/auth";
 import { formatErrorMessage } from "@/lib/utils";
 
 export async function getPurchases(params?: {
@@ -202,6 +202,7 @@ export async function createPurchase(formData: unknown, userId?: string) {
 
 export async function deletePurchase(id: string) {
   try {
+    await requireOwnerRole();
     await prisma.purchase.update({
       where: { id },
       data: { deletedAt: new Date() },

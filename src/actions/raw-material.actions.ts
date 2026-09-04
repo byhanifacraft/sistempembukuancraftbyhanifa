@@ -5,7 +5,7 @@ import { rawMaterialSchema } from "@/lib/validations";
 import { ItemType, MutationType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { serializePrisma } from "@/lib/serialize";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, requireOwnerRole } from "@/lib/auth";
 import { formatErrorMessage } from "@/lib/utils";
 
 export async function getRawMaterials(params?: {
@@ -168,6 +168,7 @@ export async function updateRawMaterial(id: string, formData: unknown) {
 
 export async function deleteRawMaterial(id: string) {
   try {
+    await requireOwnerRole();
     // Check if used in active BOM recipes (ignore soft-deleted products)
     const bomCount = await prisma.billOfMaterial.count({
       where: {

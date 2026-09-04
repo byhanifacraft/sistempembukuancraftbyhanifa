@@ -2,10 +2,12 @@ import prisma from "@/lib/prisma";
 import { Header } from "@/components/layout/header";
 import { PurchaseForm } from "@/components/purchase/purchase-form";
 import { serializePrisma } from "@/lib/serialize";
+import { requireOwnerRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewPurchasePage() {
+  await requireOwnerRole();
   const rawMaterials = await prisma.rawMaterial.findMany({
     where: { deletedAt: null },
     include: { unit: true },

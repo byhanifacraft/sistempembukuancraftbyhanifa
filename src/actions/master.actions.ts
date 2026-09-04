@@ -5,6 +5,7 @@ import { categorySchema, unitSchema } from "@/lib/validations";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { serializePrisma } from "@/lib/serialize";
 import { formatErrorMessage } from "@/lib/utils";
+import { requireOwnerRole } from "@/lib/auth";
 
 function slugify(text: string): string {
   return text
@@ -49,6 +50,7 @@ export async function getCategories() {
 
 export async function createCategory(formData: unknown) {
   try {
+    await requireOwnerRole();
     const validated = categorySchema.parse(formData);
     const slug = slugify(validated.name);
 
@@ -79,6 +81,7 @@ export async function createCategory(formData: unknown) {
 
 export async function updateCategory(id: string, formData: unknown) {
   try {
+    await requireOwnerRole();
     const validated = categorySchema.parse(formData);
     const slug = slugify(validated.name);
 
@@ -109,6 +112,7 @@ export async function updateCategory(id: string, formData: unknown) {
 
 export async function deleteCategory(id: string) {
   try {
+    await requireOwnerRole();
     const activeProducts = await prisma.product.count({
       where: { categoryId: id, deletedAt: null },
     });
@@ -173,6 +177,7 @@ export async function getUnits() {
 
 export async function createUnit(formData: unknown) {
   try {
+    await requireOwnerRole();
     const validated = unitSchema.parse(formData);
 
     const unit = await prisma.unit.create({
@@ -200,6 +205,7 @@ export async function createUnit(formData: unknown) {
 
 export async function updateUnit(id: string, formData: unknown) {
   try {
+    await requireOwnerRole();
     const validated = unitSchema.parse(formData);
 
     const updated = await prisma.unit.update({
@@ -228,6 +234,7 @@ export async function updateUnit(id: string, formData: unknown) {
 
 export async function deleteUnit(id: string) {
   try {
+    await requireOwnerRole();
     const usedMaterials = await prisma.rawMaterial.count({
       where: { unitId: id },
     });

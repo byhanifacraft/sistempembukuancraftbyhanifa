@@ -5,7 +5,7 @@ import { expenseCategorySchema, expenseSchema } from "@/lib/validations";
 import { format } from "date-fns";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { serializePrisma } from "@/lib/serialize";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, requireOwnerRole } from "@/lib/auth";
 import { formatErrorMessage } from "@/lib/utils";
 
 async function fetchExpenseCategoriesRaw() {
@@ -36,6 +36,7 @@ export async function getExpenseCategories() {
 
 export async function createExpenseCategory(formData: unknown) {
   try {
+    await requireOwnerRole();
     const validated = expenseCategorySchema.parse(formData);
     const category = await prisma.expenseCategory.create({
       data: { name: validated.name.trim() },
@@ -59,6 +60,7 @@ export async function createExpenseCategory(formData: unknown) {
 
 export async function deleteExpenseCategory(id: string) {
   try {
+    await requireOwnerRole();
     const count = await prisma.expense.count({
       where: { categoryId: id },
     });
@@ -149,6 +151,7 @@ export async function getExpenses(params?: {
 
 export async function createExpense(formData: unknown, userId?: string) {
   try {
+    await requireOwnerRole();
     const validated = expenseSchema.parse(formData);
     const validUserId = await getCurrentUserId(userId);
 
@@ -192,6 +195,7 @@ export async function createExpense(formData: unknown, userId?: string) {
 
 export async function updateExpense(id: string, formData: unknown) {
   try {
+    await requireOwnerRole();
     const validated = expenseSchema.parse(formData);
 
     const updated = await prisma.expense.update({
@@ -227,6 +231,7 @@ export async function updateExpense(id: string, formData: unknown) {
 
 export async function deleteExpense(id: string) {
   try {
+    await requireOwnerRole();
     await prisma.expense.update({
       where: { id },
       data: { deletedAt: new Date() },

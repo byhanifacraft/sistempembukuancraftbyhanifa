@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/sidebar";
-import { MobileNav } from "@/components/layout/mobile-nav";
-import { MobileBottomBar } from "@/components/layout/mobile-bottom-bar";
-import { MobileNavProvider } from "@/components/layout/mobile-nav-context";
+import { AppShell } from "@/components/layout/app-shell";
+import { getCurrentAuthUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "CraftByHanifa - Pembukuan & HPP Kerajinan Tangan",
@@ -18,22 +16,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = await getCurrentAuthUser();
+
   return (
     <html lang="id">
       <body className="min-h-screen bg-[#FCF8FA] text-[#231C20] flex flex-col md:flex-row antialiased">
-        <MobileNavProvider>
-          <Sidebar />
-          <MobileNav />
-          <main className="flex-1 flex flex-col min-w-0 overflow-y-auto pb-16 md:pb-0">
-            {children}
-          </main>
-          <MobileBottomBar />
-        </MobileNavProvider>
+        <AppShell user={user}>
+          {children}
+        </AppShell>
       </body>
     </html>
   );

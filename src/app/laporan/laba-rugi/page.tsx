@@ -5,12 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { formatIndonesianDate, formatRupiah } from "@/lib/utils";
 import { TrendingUp, FileText, Calendar, ArrowDownRight, ArrowUpRight } from "lucide-react";
+import { requireOwnerRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfitLossReportPage(props: {
   searchParams: Promise<{ startDate?: string; endDate?: string }>;
 }) {
+  await requireOwnerRole();
   const searchParams = await props.searchParams;
   const startDate = searchParams?.startDate || undefined;
   const endDate = searchParams?.endDate || undefined;

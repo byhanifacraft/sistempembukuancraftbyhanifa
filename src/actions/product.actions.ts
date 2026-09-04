@@ -5,7 +5,7 @@ import { productSchema } from "@/lib/validations";
 import { ItemType, MutationType, ProductionMode } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { serializePrisma } from "@/lib/serialize";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, requireOwnerRole } from "@/lib/auth";
 import { formatErrorMessage } from "@/lib/utils";
 
 export async function getProducts(params?: {
@@ -276,6 +276,7 @@ export async function updateProduct(id: string, formData: unknown) {
 
 export async function deleteProduct(id: string) {
   try {
+    await requireOwnerRole();
     await prisma.product.update({
       where: { id },
       data: { deletedAt: new Date() },

@@ -4,10 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldCheck } from "lucide-react";
 import { serializePrisma } from "@/lib/serialize";
 import { MasterDataManager } from "@/components/settings/master-data-manager";
+import { requireOwnerRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
+  await requireOwnerRole();
   const [categories, units, expenseCategories, users] = await Promise.all([
     prisma.category.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" } }),
     prisma.unit.findMany({ orderBy: { name: "asc" } }),

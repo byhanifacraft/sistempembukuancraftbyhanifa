@@ -1,10 +1,12 @@
 import { getExpenses, getExpenseCategories } from "@/actions/expense.actions";
 import { Header } from "@/components/layout/header";
 import { ExpenseManager } from "@/components/expense/expense-manager";
+import { requireOwnerRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function OperatingExpensesPage() {
+  await requireOwnerRole();
   const [expensesData, categories] = await Promise.all([
     getExpenses({ limit: 50 }),
     getExpenseCategories(),

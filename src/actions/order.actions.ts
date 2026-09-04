@@ -14,7 +14,7 @@ import {
 import { format } from "date-fns";
 import { revalidatePath } from "next/cache";
 import { serializePrisma } from "@/lib/serialize";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, requireOwnerRole } from "@/lib/auth";
 import { formatErrorMessage } from "@/lib/utils";
 
 export async function getOrders(params?: {
@@ -412,6 +412,7 @@ export async function updateOrderStatus(orderId: string, newStatus: OrderStatus)
 
 export async function deleteOrder(orderId: string) {
   try {
+    await requireOwnerRole();
     await prisma.order.update({
       where: { id: orderId },
       data: { deletedAt: new Date() },
