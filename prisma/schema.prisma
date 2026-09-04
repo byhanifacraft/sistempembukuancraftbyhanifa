@@ -1,0 +1,463 @@
+// ==============================================================================
+// PRISMA SCHEMA - SISTEM PEMBUKUAN CRAFTBYHANIFA (MAGETAN, JAWA TIMUR)
+// ==============================================================================
+// Aturan & Ketentuan:
+// 1. UUID sebagai Primary Key pada semua tabel.
+// 2. Field mata uang (harga/biaya/laba) disimpan sebagai Integer (Rupiah, tanpa desimal).
+// 3. Rounding Policy: Konsisten menggunakan Math.round() untuk pembulatan integer Rupiah.
+//    Selisih pembulatan beberapa Rupiah pada akumulasi multi-transaksi adalah hal wajar
+//    dan dapat diterima pada skala UMKM.
+// 4. Dua Mode Produksi (Product.productionMode):
+//    - STOCK_BASED: Diproduksi di muka via ProductionRun, potong bahan baku saat produksi,
+//      potong stok produk jadi saat penjualan, snapshot unitHpp = Product.costPrice.
+//    - MADE_TO_ORDER: Kustom, tanpa stok produk jadi, potong bahan baku langsung saat
+//      transaksi penjualan, snapshot unitHpp = sum(BOM quantityNeeded * RawMaterial.avgCostPerUnit).
+// 5. Raw Material Moving Weighted Average:
+//    newAvgCost = ((currentStock * avgCostPerUnit) + (purchaseQty * purchaseUnitCost)) / (currentStock + purchaseQty)
+// 6. Concurrency / Row Locking:
+//    Semua alur validasi & pemotongan stok menggunakan Prisma interactive transaction +
+//    pessimistic lock: SELECT ... FOR UPDATE untuk mencegah race condition.
+// ==============================================================================
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum SalesChannel {
+  SHOPEE
+  OFFLINE
+  WHATSAPP
+  OTHER
+}
+
+enum OrderStatus {
+  PENDING      // Menunggu diproses / draft
+  PROCESSING   // Sedang dibuat / dikemas (custom order)
+  SHIPPED      // Sedang dikirim
+  COMPLETED    // Pesanan selesai & dana valid
+  CANCELLED    // Pesanan dibatalkan (tidak dihitung omzet)
+  RETURNED     // Pesanan retur / dikembalikan
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  SHOPEE_PAY
+  QRIS
+  OTHER
+}
+
+enum ProductionMode {
+  STOCK_BASED     // Diproduksi di muka secara batch, bahan baku dipotong saat ProductionRun
+  MADE_TO_ORDER   // Dibuat berdasarkan pesanan custom, bahan baku dipotong langsung saat Order disimpan
+}
+
+enum MutationType {
+  PURCHASE_IN       // Penambahan dari pembelian bahan baku
+  PRODUCTION_OUT    // Pengurangan bahan baku untuk produksi batch atau pesanan made-to-order
+  PRODUCTION_IN     // Penambahan produk jadi hasil produksi batch (STOCK_BASED)
+  SALE_OUT          // Pengurangan produk jadi karena penjualan (STOCK_BASED)
+  ADJUSTMENT_IN     // Penyesuaian stok manual (tambah)
+  ADJUSTMENT_OUT    // Penyesuaian stok manual (rusak/hilang/kurang)
+  RETURN_IN         // Pengembalian barang retur
+}
+
+enum ItemType {
+  RAW_MATERIAL
+  FINISHED_PRODUCT
+}
+
+enum ImportStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+  ROLLED_BACK
+}
+
+// ----------------------------------------------------
+// USER & PROFIL
+// ----------------------------------------------------
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  name      String
+  role      UserRole @default(OWNER)
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  stockMutations StockMutation[]
+  purchases      Purchase[]
+  expenses       Expense[]
+  importLogs     ShopeeImportLog[]
+  productionRuns ProductionRun[]
+
+  @@map("users")
+}
+
+// ----------------------------------------------------
+// MASTER DATA: KATEGORI & SATUAN
+// ----------------------------------------------------
+
+model Category {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Unit {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique // Contoh: Gram, Mililiter, Pcs, Meter, Lembar
+  symbol    String   @unique // Contoh: g, ml, pcs, m, lbr
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  rawMaterials RawMaterial[]
+
+  @@map("units")
+}
+
+// ----------------------------------------------------
+// MASTER DATA: BAHAN BAKU & STOK
+// ----------------------------------------------------
+
+model RawMaterial {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String    // e.g., Resin Epoxy Bening, Wax Kedelai (Soy Wax), Ring Kunci Nikel, Kain Blacu
+  sku             String?   @unique
+  unitId          String    @map("unit_id") @db.Uuid
+  currentStock    Decimal   @default(0) @map("current_stock") @db.Decimal(12, 2)
+  minimumStock    Decimal   @default(10) @map("minimum_stock") @db.Decimal(12, 2) // Ambang batas peringatan stok menipis
+  
+  // Moving Weighted Average Cost (Rupiah per satuan):
+  // Dihitung setiap pembelian baru: ((currentStock * avgCostPerUnit) + (purchaseQty * purchaseUnitCost)) / (currentStock + purchaseQty)
+  avgCostPerUnit  Int       @default(0) @map("avg_cost_per_unit")
+  
+  // Harga beli satuan dari transaksi pembelian terakhir (tanpa rata-rata)
+  lastCostPerUnit Int       @default(0) @map("last_cost_per_unit")
+  
+  description     String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  unit           Unit             @relation(fields: [unitId], references: [id])
+  bomItems       BillOfMaterial[]
+  purchaseItems  PurchaseItem[]
+  stockMutations StockMutation[]
+
+  @@index([name])
+  @@map("raw_materials")
+}
+
+// ----------------------------------------------------
+// MASTER DATA: PRODUK & RESEP (BILL OF MATERIALS)
+// ----------------------------------------------------
+
+model Product {
+  id             String         @id @default(uuid()) @db.Uuid
+  name           String         // e.g., Gantungan Kunci Huruf Resin Custom, Lilin Aromaterapi Gelas 60ml
+  sku            String?        @unique
+  categoryId     String         @map("category_id") @db.Uuid
+  productionMode ProductionMode @default(STOCK_BASED) @map("production_mode")
+  sellingPrice   Int            @map("selling_price") // Harga jual standar (Rupiah)
+  costPrice      Int            @default(0) @map("cost_price") // HPP standar referensi terkini (Rupiah)
+  currentStock   Int            @default(0) @map("current_stock") // Stok produk jadi (hanya untuk STOCK_BASED)
+  minStockAlert  Int            @default(5) @map("min_stock_alert")
+  isActive       Boolean        @default(true) @map("is_active")
+  imageUrl       String?        @map("image_url")
+  description    String?
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
+
+  category       Category                @relation(fields: [categoryId], references: [id])
+  bomItems       BillOfMaterial[]
+  orderItems     OrderItem[]
+  stockMutations StockMutation[]
+  shopeeMappings ShopeeProductMapping[]
+  productionRuns ProductionRun[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([productionMode])
+  @@map("products")
+}
+
+model BillOfMaterial {
+  id             String   @id @default(uuid()) @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  rawMaterialId  String   @map("raw_material_id") @db.Uuid
+  quantityNeeded Decimal  @map("quantity_needed") @db.Decimal(10, 3) // Kebutuhan bahan per 1 unit produk
+  notes          String?  // e.g., "Resin bagian huruf A-Z"
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
+
+  @@unique([productId, rawMaterialId])
+  @@map("bill_of_materials")
+}
+
+// ----------------------------------------------------
+// AKTIVITAS PRODUKSI BATCH (KHUSUS PRODUK STOCK_BASED)
+// ----------------------------------------------------
+
+model ProductionRun {
+  id             String   @id @default(uuid()) @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  quantityMade   Int      @map("quantity_made") // Jumlah unit produk jadi yang dihasilkan
+  totalCost      Int      @map("total_cost")    // Total biaya bahan baku terpakai (Rupiah)
+  unitCost       Int      @map("unit_cost")     // totalCost / quantityMade (snapshot HPP saat batch ini selesai)
+  productionDate DateTime @map("production_date")
+  notes          String?
+  createdById    String   @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  product   Product @relation(fields: [productId], references: [id])
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@index([productId])
+  @@index([productionDate])
+  @@map("production_runs")
+}
+
+// ----------------------------------------------------
+// TRANSAKSI PENJUALAN (SHOPEE & OFFLINE)
+// ----------------------------------------------------
+
+model Order {
+  id              String        @id @default(uuid()) @db.Uuid
+  orderNumber     String        @unique @map("order_number") // No faktur internal (e.g., CBH-202609-0001)
+  channel         SalesChannel  @default(OFFLINE)
+  externalOrderSn String?       @map("external_order_sn") // No. Pesanan Shopee
+  customerName    String?       @map("customer_name")
+  customerPhone   String?       @map("customer_phone")
+  customerAddress String?       @map("customer_address")
+  orderDate       DateTime      @map("order_date")
+  status          OrderStatus   @default(COMPLETED)
+  paymentStatus   PaymentStatus @default(PAID) @map("payment_status")
+  paymentMethod   PaymentMethod @default(CASH) @map("payment_method")
+  
+  subtotalAmount  Int           @map("subtotal_amount")
+  discountAmount  Int           @default(0) @map("discount_amount")
+  shippingFee     Int           @default(0) @map("shipping_fee")
+  platformFee     Int           @default(0) @map("platform_fee")
+  totalAmount     Int           @map("total_amount")
+  totalHppAmount  Int           @default(0) @map("total_hpp_amount") // Total HPP akumulasi dari OrderItem
+  netMarginAmount Int           @default(0) @map("net_margin_amount") // Laba kotor pesanan (totalAmount - totalHppAmount)
+  
+  notes           String?
+  importLogId     String?       @map("import_log_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  importLog  ShopeeImportLog? @relation(fields: [importLogId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([orderDate])
+  @@index([channel])
+  @@index([status])
+  @@index([externalOrderSn])
+  @@map("orders")
+}
+
+model OrderItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  orderId      String   @map("order_id") @db.Uuid
+  productId    String?  @map("product_id") @db.Uuid
+  productName  String   @map("product_name") // Snapshot nama produk
+  productSku   String?  @map("product_sku")
+  variantName  String?  @map("variant_name") // e.g., "Merah Muda / Huruf H"
+  quantity     Int      @default(1)
+  unitPrice    Int      @map("unit_price") // Harga jual satuan (Rupiah)
+  subtotal     Int      // quantity * unitPrice
+  
+  // Snapshot HPP per unit saat transaksi berlangsung
+  unitHpp      Int      @default(0) @map("unit_hpp")
+  
+  // Catatan kustomisasi khusus pesanan craft (mis. nama, warna, glitter)
+  customNote   String?  @map("custom_note")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// ----------------------------------------------------
+// PENGADAAN BAHAN BAKU & PENGELUARAN OPERASIONAL
+// ----------------------------------------------------
+
+model Purchase {
+  id             String        @id @default(uuid()) @db.Uuid
+  purchaseNumber String        @unique @map("purchase_number")
+  supplierName   String?       @map("supplier_name")
+  purchaseDate   DateTime      @map("purchase_date")
+  totalAmount    Int           @map("total_amount")
+  paymentStatus  PaymentStatus @default(PAID) @map("payment_status")
+  paymentMethod  PaymentMethod @default(BANK_TRANSFER) @map("payment_method")
+  notes          String?
+  createdById    String        @map("created_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+
+  createdBy     User           @relation(fields: [createdById], references: [id])
+  purchaseItems PurchaseItem[]
+
+  @@index([purchaseDate])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  purchaseId    String   @map("purchase_id") @db.Uuid
+  rawMaterialId String   @map("raw_material_id") @db.Uuid
+  quantity      Decimal  @db.Decimal(12, 2)
+  unitCost      Int      @map("unit_cost")
+  subtotal      Int
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  purchase    Purchase    @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
+
+  @@map("purchase_items")
+}
+
+model ExpenseCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  isDefault   Boolean  @default(false) @map("is_default")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  expenses Expense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id            String        @id @default(uuid()) @db.Uuid
+  expenseNumber String        @unique @map("expense_number")
+  categoryId    String        @map("category_id") @db.Uuid
+  title         String        // e.g., "Beli Bubble Wrap 50m & Box Karton"
+  amount        Int           // Rupiah
+  expenseDate   DateTime      @map("expense_date")
+  paymentMethod PaymentMethod @default(CASH) @map("payment_method")
+  receiptUrl    String?       @map("receipt_url")
+  notes         String?
+  createdById   String        @map("created_by_id") @db.Uuid
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+
+  category  ExpenseCategory @relation(fields: [categoryId], references: [id])
+  createdBy User            @relation(fields: [createdById], references: [id])
+
+  @@index([expenseDate])
+  @@index([categoryId])
+  @@map("expenses")
+}
+
+// ----------------------------------------------------
+// AUDIT LOG & MUTASI STOK
+// ----------------------------------------------------
+
+model StockMutation {
+  id            String       @id @default(uuid()) @db.Uuid
+  itemType      ItemType     @map("item_type")
+  rawMaterialId String?      @map("raw_material_id") @db.Uuid
+  productId     String?      @map("product_id") @db.Uuid
+  mutationType  MutationType @map("mutation_type")
+  quantity      Decimal      @db.Decimal(12, 2)
+  previousStock Decimal      @map("previous_stock") @db.Decimal(12, 2)
+  newStock      Decimal      @map("new_stock") @db.Decimal(12, 2)
+  referenceType String?      @map("reference_type") // e.g., "ORDER", "PURCHASE", "PRODUCTION", "MANUAL"
+  referenceId   String?      @map("reference_id")
+  notes         String?
+  createdById   String       @map("created_by_id") @db.Uuid
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  rawMaterial RawMaterial? @relation(fields: [rawMaterialId], references: [id])
+  product     Product?     @relation(fields: [productId], references: [id])
+  createdBy   User         @relation(fields: [createdById], references: [id])
+
+  @@index([itemType, rawMaterialId])
+  @@index([itemType, productId])
+  @@index([createdAt])
+  @@map("stock_mutations")
+}
+
+// ----------------------------------------------------
+// MODUL INTEGRASI IMPOR DATA SHOPEE
+// ----------------------------------------------------
+
+model ShopeeImportLog {
+  id                    String       @id @default(uuid()) @db.Uuid
+  fileName              String       @map("file_name")
+  fileSize              Int          @map("file_size")
+  totalRows             Int          @map("total_rows")
+  importedCount         Int          @default(0) @map("imported_count")
+  skippedDuplicateCount Int          @default(0) @map("skipped_duplicate_count")
+  failedCount           Int          @default(0) @map("failed_count")
+  status                ImportStatus @default(SUCCESS)
+  rawColumnMapping      Json?        @map("raw_column_mapping")
+  createdById           String       @map("created_by_id") @db.Uuid
+  createdAt             DateTime     @default(now()) @map("created_at")
+  rolledBackAt          DateTime?    @map("rolled_back_at")
+
+  createdBy User    @relation(fields: [createdById], references: [id])
+  orders    Order[]
+
+  @@map("shopee_import_logs")
+}
+
+model ShopeeProductMapping {
+  id                 String   @id @default(uuid()) @db.Uuid
+  shopeeProductName  String   @map("shopee_product_name")
+  shopeeVariation    String   @default("") @map("shopee_variation") // Default empty string "" untuk produk tanpa variasi
+  mappedProductId    String   @map("mapped_product_id") @db.Uuid
+  confidenceScore    Float    @default(1.0) @map("confidence_score")
+  isVerified         Boolean  @default(true) @map("is_verified")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  mappedProduct Product @relation(fields: [mappedProductId], references: [id], onDelete: Cascade)
+
+  @@unique([shopeeProductName, shopeeVariation])
+  @@map("shopee_product_mappings")
+}
