@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus } from "@/types/enums";
 import { updateOrderStatus, deleteOrder } from "@/actions/order.actions";
 import { Trash2, Check, RefreshCw } from "lucide-react";
 

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { formatIndonesianDateTime } from "@/lib/utils";
 import { RotateCcw, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { rollbackShopeeImport } from "@/actions/shopee-import.actions";
-import { ImportStatus } from "@prisma/client";
+import { ImportStatus } from "@/types/enums";
 
 export function ImportHistoryTable({ logs }: { logs: any[] }) {
   const [loadingId, setLoadingId] = useState<string | null>(null);

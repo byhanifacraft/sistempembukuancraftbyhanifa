@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatRupiah, roundRupiah } from "@/lib/utils";
 import { Plus, Trash2, AlertCircle, Info, Calculator, Sparkles, CheckCircle2 } from "lucide-react";
 import { createProduct, updateProduct } from "@/actions/product.actions";
-import { ProductionMode } from "@prisma/client";
+import { ProductionMode } from "@/types/enums";
 
 interface BOMItemRow {
   rawMaterialId: string;

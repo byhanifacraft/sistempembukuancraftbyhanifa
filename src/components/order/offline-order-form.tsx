@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatRupiah, roundRupiah } from "@/lib/utils";
 import { Plus, Trash2, ShoppingCart, AlertCircle, CheckCircle2, User, CreditCard } from "lucide-react";
 import { createOfflineOrder } from "@/actions/order.actions";
-import { ProductionMode } from "@prisma/client";
+import { ProductionMode } from "@/types/enums";
 
 interface OrderItemRow {
   productId?: string;
