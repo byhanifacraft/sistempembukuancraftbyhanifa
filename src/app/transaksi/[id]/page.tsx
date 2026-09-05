@@ -113,7 +113,12 @@ export default async function OrderDetailPage(props: {
                   {order.customerName || "Pelanggan Offline"}
                 </p>
                 {order.customerPhone && (
-                  <p className="text-stone-600 font-mono">{order.customerPhone}</p>
+                  <p className="text-[#4A3B41] font-mono mt-0.5">📞 {order.customerPhone}</p>
+                )}
+                {order.customerAddress && (
+                  <p className="text-[#75656B] mt-1 text-[11px] bg-pink-50/60 p-2 rounded-md border border-pink-100/80">
+                    <span className="font-semibold text-[#9B2C54]">📍 Alamat Pengiriman:</span> {order.customerAddress}
+                  </p>
                 )}
               </div>
               <div>

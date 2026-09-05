@@ -19,6 +19,8 @@ import {
   HelpCircle,
   LogOut,
   Loader2,
+  Users,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SessionUser } from "@/lib/auth";
@@ -53,6 +55,11 @@ export const navSections: NavSection[] = [
         icon: ReceiptText,
       },
       {
+        name: "Data Pelanggan",
+        href: "/pelanggan",
+        icon: Users,
+      },
+      {
         name: "Impor Shopee",
         href: "/import-shopee",
         icon: FileSpreadsheet,
@@ -70,14 +77,19 @@ export const navSections: NavSection[] = [
     title: "Produk & Produksi",
     items: [
       {
-        name: "Produk & Resep BOM",
+        name: "Bahan Baku & Stok",
+        href: "/bahan-baku",
+        icon: Boxes,
+      },
+      {
+        name: "Produk",
         href: "/produk",
         icon: Package,
       },
       {
-        name: "Bahan Baku & Stok",
-        href: "/bahan-baku",
-        icon: Boxes,
+        name: "Resep BOM",
+        href: "/resep-bom",
+        icon: Layers,
       },
       {
         name: "Produksi Batch",

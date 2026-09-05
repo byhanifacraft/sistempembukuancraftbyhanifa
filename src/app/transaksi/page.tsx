@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatIndonesianDate, formatIndonesianDateTime, formatRupiah } from "@/lib/utils";
 import { OrderStatus, SalesChannel } from "@prisma/client";
-import { Plus, ReceiptText, FileSpreadsheet, Search, Eye, Filter } from "lucide-react";
+import { Plus, ReceiptText, FileSpreadsheet, Search, Eye, Filter, Users } from "lucide-react";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -76,6 +76,12 @@ export default async function TransactionsPage(props: {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link href="/pelanggan">
+              <Button variant="outline" size="sm" className="text-xs gap-1.5 border-[#E8C5D1] text-[#9B2C54] hover:bg-[#FFF0F4]">
+                <Users className="w-3.5 h-3.5" />
+                <span>Data Pelanggan</span>
+              </Button>
+            </Link>
             <Link href="/import-shopee">
               <Button variant="outline" size="sm" className="text-xs gap-1.5 border-[#E0688A] text-[#E0688A] hover:bg-[#FFF0F4]">
                 <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -152,9 +158,21 @@ export default async function TransactionsPage(props: {
                         </TableCell>
 
                         <TableCell className="max-w-xs">
-                          <p className="font-semibold text-stone-900 text-xs">
-                            {order.customerName || "Pelanggan"}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-semibold text-stone-900 text-xs">
+                              {order.customerName || "Pelanggan"}
+                            </p>
+                            {order.customerPhone && (
+                              <span className="text-[10px] text-stone-500 font-mono">
+                                • {order.customerPhone}
+                              </span>
+                            )}
+                          </div>
+                          {order.customerAddress && (
+                            <p className="text-[10px] text-stone-500 truncate max-w-[220px] mt-0.5" title={order.customerAddress}>
+                              📍 {order.customerAddress}
+                            </p>
+                          )}
                           <div className="space-y-1 mt-1">
                             {order.orderItems.map((item) => (
                               <div key={item.id} className="text-[11px] text-stone-600">

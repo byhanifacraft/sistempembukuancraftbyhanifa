@@ -58,6 +58,45 @@ export async function getProducts(params?: {
   }
 }
 
+export async function getProductsWithFullBOM(params?: {
+  search?: string;
+  categoryId?: string;
+}) {
+  try {
+    const where: any = { deletedAt: null };
+    if (params?.search) {
+      where.OR = [
+        { name: { contains: params.search, mode: "insensitive" } },
+        { sku: { contains: params.search, mode: "insensitive" } },
+        { bomItems: { some: { rawMaterial: { name: { contains: params.search, mode: "insensitive" } } } } },
+      ];
+    }
+    if (params?.categoryId) {
+      where.categoryId = params.categoryId;
+    }
+
+    const products = await prisma.product.findMany({
+      where,
+      include: {
+        category: true,
+        bomItems: {
+          include: {
+            rawMaterial: {
+              include: { unit: true },
+            },
+          },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    return serializePrisma(products);
+  } catch (error) {
+    console.error("Error fetching products with full BOM:", error);
+    throw new Error("Gagal memuat daftar resep BOM.");
+  }
+}
+
 export async function getProductById(id: string) {
   try {
     const product = await prisma.product.findFirst({

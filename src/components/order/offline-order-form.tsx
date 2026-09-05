@@ -32,6 +32,7 @@ export function OfflineOrderForm({
 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<any>("CASH");
   const [discountAmount, setDiscountAmount] = useState(0);
   const [shippingFee, setShippingFee] = useState(0);
@@ -117,6 +118,7 @@ export function OfflineOrderForm({
       const payload = {
         customerName: customerName || "Pelanggan Offline",
         customerPhone: customerPhone || null,
+        customerAddress: customerAddress || null,
         orderDate: new Date(),
         paymentMethod,
         discountAmount,
@@ -179,6 +181,16 @@ export function OfflineOrderForm({
                   className="mt-1 text-xs font-mono"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-[#231C20]">Alamat Customer / Domisili / Pengiriman (Opsional)</label>
+              <Input
+                placeholder="Contoh: Jl. Pahlawan No. 45, RT 02/03, Magetan, Jawa Timur"
+                value={customerAddress}
+                onChange={(e) => setCustomerAddress(e.target.value)}
+                className="mt-1 text-xs"
+              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

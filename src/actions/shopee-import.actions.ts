@@ -34,6 +34,8 @@ export interface ShopeeParsedItem {
   shippingFee: number;
   buyerNote: string;
   customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
 }
 
 export interface ProductMappingSuggestion {
@@ -181,6 +183,14 @@ export async function previewShopeeData(rawRows: ShopeeRawRow[]) {
         findColumnValue(r, ["Nama Penerima", "Recipient Name", "Username Pembeli", "Nama Pembeli"])
       ).trim();
 
+      const customerPhone = String(
+        findColumnValue(r, ["No. Telepon", "Nomor Telepon", "Phone Number", "No Telepon", "No. HP", "No Handphone"])
+      ).trim();
+
+      const customerAddress = String(
+        findColumnValue(r, ["Alamat Pengiriman", "Delivery Address", "Alamat", "Shipping Address", "Alamat Penerima", "Kota/Kabupaten"])
+      ).trim();
+
       uniqueOrderSns.add(orderSn);
       const comboKey = `${productName.toLowerCase()}|||${variation.toLowerCase()}`;
       if (!uniqueProductCombos.has(comboKey)) {
@@ -199,6 +209,8 @@ export async function previewShopeeData(rawRows: ShopeeRawRow[]) {
         shippingFee,
         buyerNote,
         customerName,
+        customerPhone: customerPhone || undefined,
+        customerAddress: customerAddress || undefined,
       });
     }
 
@@ -595,6 +607,8 @@ export async function executeShopeeImport(params: {
             channel: SalesChannel.SHOPEE,
             externalOrderSn: orderSn,
             customerName: first.customerName || "Pembeli Shopee",
+            customerPhone: first.customerPhone || null,
+            customerAddress: first.customerAddress || null,
             orderDate,
             status: orderStatus,
             paymentStatus: isCancelledOrReturned ? PaymentStatus.REFUNDED : PaymentStatus.PAID,

@@ -81,12 +81,20 @@ export default async function ProductsPage(props: {
                 <CardTitle className="text-base font-semibold">Daftar Produk CraftByHanifa</CardTitle>
               </div>
 
-              <Link href="/produk/baru">
-                <Button size="sm" className="text-xs gap-1.5 bg-[#E0688A] text-white hover:bg-[#D45679] shadow-xs">
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Tambah Produk Baru</span>
-                </Button>
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link href="/resep-bom">
+                  <Button variant="outline" size="sm" className="text-xs gap-1.5 border-[#E8C5D1] text-[#9B2C54] hover:bg-[#FFF0F4]">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Formula Resep BOM</span>
+                  </Button>
+                </Link>
+                <Link href="/produk/baru">
+                  <Button size="sm" className="text-xs gap-1.5 bg-[#E0688A] text-white hover:bg-[#D45679] shadow-xs">
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Tambah Produk Baru</span>
+                  </Button>
+                </Link>
+              </div>
             </div>
           </CardHeader>
 
