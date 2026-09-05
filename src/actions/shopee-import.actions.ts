@@ -36,6 +36,7 @@ export interface ShopeeParsedItem {
   customerName: string;
   customerPhone?: string;
   customerAddress?: string;
+  platformFee?: number;
 }
 
 export interface ProductMappingSuggestion {
@@ -49,7 +50,110 @@ export interface ProductMappingSuggestion {
 }
 
 /**
+ * Helper to parse Shopee Released Income sheet ("Penghasilan")
+ * Found in Income.sudah dilepas.id.*.xlsx files
+ */
+function parseShopeeIncomeSheet(sheet: XLSX.WorkSheet): ShopeeRawRow[] {
+  const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  if (rawRows.length < 3) return [];
+
+  // Find header row containing "No. Pesanan" and "Lihat berdasarkan"
+  let headerRowIndex = 2;
+  for (let r = 0; r < Math.min(10, rawRows.length); r++) {
+    const rowStr = (rawRows[r] || []).join(" ").toLowerCase();
+    if (rowStr.includes("no. pesanan") && rowStr.includes("lihat berdasarkan")) {
+      headerRowIndex = r;
+      break;
+    }
+  }
+
+  const headers = rawRows[headerRowIndex].map((h: any) => String(h || "").toLowerCase().trim());
+  const colIndex = (name: string) => headers.findIndex((h) => h === name.toLowerCase().trim());
+
+  const idxType = colIndex("lihat berdasarkan");
+  const idxOrderSn = colIndex("no. pesanan");
+  const idxProductName = colIndex("nama produk");
+  const idxDate = colIndex("waktu pesanan dibuat");
+  const idxNetIncome = colIndex("total penghasilan");
+  const idxPrice = colIndex("harga produk");
+  const idxBuyer = colIndex("username (pembeli)");
+  const idxShippingFee = colIndex("ongkir dibayar pembeli");
+  const idxCourier = colIndex("nama kurir");
+
+  const orderMetaMap = new Map<string, any>();
+  const orderSkuItems = new Map<string, any[]>();
+
+  for (let r = headerRowIndex + 1; r < rawRows.length; r++) {
+    const row = rawRows[r];
+    const type = String(row[idxType] || "").trim().toLowerCase();
+    const orderSn = String(row[idxOrderSn] || "").trim();
+    if (!orderSn) continue;
+
+    if (type === "order") {
+      orderMetaMap.set(orderSn, {
+        orderSn,
+        orderDate: row[idxDate],
+        netIncome: Number(row[idxNetIncome]) || 0,
+        buyer: String(row[idxBuyer] || "").trim(),
+        shippingFee: Number(row[idxShippingFee]) || 0,
+        courier: String(row[idxCourier] || "").trim(),
+      });
+    } else if (type === "sku") {
+      if (!orderSkuItems.has(orderSn)) {
+        orderSkuItems.set(orderSn, []);
+      }
+      orderSkuItems.get(orderSn)!.push({
+        productName: String(row[idxProductName] || "").trim(),
+        price: Number(row[idxPrice]) || 0,
+      });
+    }
+  }
+
+  const rows: ShopeeRawRow[] = [];
+
+  for (const [orderSn, items] of orderSkuItems.entries()) {
+    const meta = orderMetaMap.get(orderSn) || {};
+
+    // Group identical items within the same order into accurate quantity
+    const itemMap = new Map<string, { productName: string; price: number; quantity: number }>();
+    for (const it of items) {
+      const key = `${it.productName}|||${it.price}`;
+      if (!itemMap.has(key)) {
+        itemMap.set(key, { ...it, quantity: 1 });
+      } else {
+        itemMap.get(key)!.quantity += 1;
+      }
+    }
+
+    const orderSubtotal = items.reduce((sum, it) => sum + it.price, 0);
+    const orderNetIncome = meta.netIncome || orderSubtotal;
+    const orderPlatformFee = Math.max(0, orderSubtotal - orderNetIncome);
+
+    for (const it of itemMap.values()) {
+      rows.push({
+        "No. Pesanan": orderSn,
+        "Status Pesanan": "Selesai",
+        "Waktu Pesanan Dibuat": meta.orderDate || new Date().toISOString(),
+        "Nama Produk": it.productName,
+        "Nama Variasi": "",
+        "Harga Setelah Diskon": it.price,
+        "Jumlah": it.quantity,
+        "Total Pembayaran": orderNetIncome,
+        "Perkiraan Ongkos Kirim": meta.shippingFee || 0,
+        "Pesan dari Pembeli": meta.courier ? `Kurir: ${meta.courier}` : "",
+        "Nama Penerima": meta.buyer || "Pembeli Shopee",
+        "Username Pembeli": meta.buyer || "Pembeli Shopee",
+        "Biaya Platform": orderPlatformFee,
+      });
+    }
+  }
+
+  return rows;
+}
+
+/**
  * Parse Excel or CSV buffer
+ * Automatically detects whether it's a standard order report or an Income statement report
  */
 export async function parseShopeeBuffer(
   base64Content: string,
@@ -71,6 +175,37 @@ export async function parseShopeeBuffer(
       };
     } else {
       const workbook = XLSX.read(buffer, { type: "buffer" });
+
+      // Check if this workbook has a 'Penghasilan' sheet (Shopee Income Statement)
+      const incomeSheetName = workbook.SheetNames.find(
+        (name) => name.toLowerCase().trim() === "penghasilan"
+      );
+
+      if (incomeSheetName) {
+        const sheet = workbook.Sheets[incomeSheetName];
+        const rows = parseShopeeIncomeSheet(sheet);
+        const headers = [
+          "No. Pesanan",
+          "Status Pesanan",
+          "Waktu Pesanan Dibuat",
+          "Nama Produk",
+          "Nama Variasi",
+          "Harga Setelah Diskon",
+          "Jumlah",
+          "Total Pembayaran",
+          "Perkiraan Ongkos Kirim",
+          "Pesan dari Pembeli",
+          "Nama Penerima",
+          "Username Pembeli",
+          "Biaya Platform",
+        ];
+        return {
+          headers,
+          rows,
+        };
+      }
+
+      // Standard single-sheet report (e.g. "Pesanan Saya")
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
       const json: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
@@ -191,6 +326,10 @@ export async function previewShopeeData(rawRows: ShopeeRawRow[]) {
         findColumnValue(r, ["Alamat Pengiriman", "Delivery Address", "Alamat", "Shipping Address", "Alamat Penerima", "Kota/Kabupaten"])
       ).trim();
 
+      const platformFee = parseRupiahInput(
+        findColumnValue(r, ["Biaya Platform", "Platform Fee", "Biaya Layanan Shopee", "Biaya Admin Shopee"])
+      );
+
       uniqueOrderSns.add(orderSn);
       const comboKey = `${productName.toLowerCase()}|||${variation.toLowerCase()}`;
       if (!uniqueProductCombos.has(comboKey)) {
@@ -211,6 +350,7 @@ export async function previewShopeeData(rawRows: ShopeeRawRow[]) {
         customerName,
         customerPhone: customerPhone || undefined,
         customerAddress: customerAddress || undefined,
+        platformFee: platformFee || undefined,
       });
     }
 
@@ -592,6 +732,10 @@ export async function executeShopeeImport(params: {
         const totalAmount = first.totalPayment || subtotalAmount;
         const roundedTotalHpp = Math.round(totalOrderHpp);
         const netMarginAmount = isCancelledOrReturned ? 0 : totalAmount - roundedTotalHpp;
+        const computedPlatformFee =
+          first.platformFee !== undefined
+            ? first.platformFee
+            : Math.max(0, subtotalAmount - totalAmount);
 
         // Parse order date
         let orderDate = new Date();
@@ -616,7 +760,7 @@ export async function executeShopeeImport(params: {
             subtotalAmount,
             discountAmount: 0,
             shippingFee: first.shippingFee || 0,
-            platformFee: 0,
+            platformFee: isCancelledOrReturned ? 0 : computedPlatformFee,
             totalAmount: isCancelledOrReturned ? 0 : totalAmount,
             totalHppAmount: isCancelledOrReturned ? 0 : roundedTotalHpp,
             netMarginAmount,
