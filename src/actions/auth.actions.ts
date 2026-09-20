@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentAuthUser } from "@/lib/auth";
+import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -92,3 +93,89 @@ export async function logoutAction() {
 export async function getSessionUserAction() {
   return await getCurrentAuthUser();
 }
+
+export interface ResetPasswordResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+/**
+ * Server Action untuk pemulihan kata sandi akun Owner menggunakan PIN Rahasia
+ */
+export async function resetOwnerPasswordAction(formData: {
+  email: string;
+  recoveryPin: string;
+  newPassword: string;
+}): Promise<ResetPasswordResult> {
+  const email = formData.email?.trim().toLowerCase();
+  const pin = formData.recoveryPin?.trim();
+  const newPassword = formData.newPassword;
+
+  if (!email || !pin || !newPassword) {
+    return {
+      success: false,
+      error: "Email, PIN Pemulihan, dan Kata Sandi Baru wajib diisi.",
+    };
+  }
+
+  if (newPassword.length < 6) {
+    return {
+      success: false,
+      error: "Kata sandi baru minimal harus 6 karakter.",
+    };
+  }
+
+  const expectedPin = process.env.OWNER_RECOVERY_PIN || "992026";
+  if (pin !== expectedPin) {
+    return {
+      success: false,
+      error: "PIN Pemulihan Pemilik salah. Silakan periksa kembali kode rahasia Anda.",
+    };
+  }
+
+  try {
+    // Pastikan user terdaftar dan memiliki wewenang OWNER
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user || user.role !== "OWNER") {
+      return {
+        success: false,
+        error: "Akun dengan email ini tidak ditemukan atau bukan merupakan akun Owner.",
+      };
+    }
+
+    // Update password di tabel auth.users Supabase dengan bcrypt hash
+    const hashRes: any = await prisma.$queryRaw`
+      SELECT crypt(${newPassword}, gen_salt('bf', 10)) as hashed;
+    `;
+    const hashed = hashRes[0]?.hashed;
+
+    if (!hashed) {
+      return {
+        success: false,
+        error: "Gagal mengenkripsi kata sandi baru.",
+      };
+    }
+
+    await prisma.$queryRaw`
+      UPDATE auth.users 
+      SET encrypted_password = ${hashed}, updated_at = NOW() 
+      WHERE email = ${email};
+    `;
+
+    return {
+      success: true,
+      message: "Kata sandi Owner berhasil diperbarui. Silakan masuk menggunakan kata sandi baru Anda.",
+    };
+  } catch (err: any) {
+    console.error("Error pada resetOwnerPasswordAction:", err);
+    return {
+      success: false,
+      error: err.message || "Gagal memperbarui kata sandi.",
+    };
+  }
+}
+

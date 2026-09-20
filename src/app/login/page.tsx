@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { loginAction } from "@/actions/auth.actions";
+import { loginAction, resetOwnerPasswordAction } from "@/actions/auth.actions";
 import {
   Lock,
   Mail,
@@ -11,10 +11,12 @@ import {
   EyeOff,
   LogIn,
   ShieldCheck,
-  UserCheck,
   AlertCircle,
   Loader2,
-  Sparkles,
+  KeyRound,
+  CheckCircle2,
+  X,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,11 +26,27 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const redirectedFrom = searchParams.get("redirectedFrom") || "/";
 
+  // Login form states
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Recovery modal states
+  const [showRecoveryModal, setShowRecoveryModal] = useState(
+    searchParams.get("recovery") === "true"
+  );
+  const [recoveryEmail, setRecoveryEmail] = useState(
+    searchParams.get("email") || "owner@craftbyhanifa.com"
+  );
+  const [recoveryPin, setRecoveryPin] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+  const [recoverySuccess, setRecoverySuccess] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,26 +56,59 @@ export default function LoginPage() {
     try {
       const result = await loginAction({ email, password });
       if (!result.success) {
-        setErrorMessage(result.error || "Gagal masuk. Silakan cek data Anda.");
+        setErrorMessage(result.error || "Gagal masuk. Silakan periksa kembali email dan kata sandi Anda.");
         setLoading(false);
       } else {
         router.push(redirectedFrom);
         router.refresh();
       }
     } catch (err: any) {
-      setErrorMessage(err.message || "Terjadi kesalahan pada server.");
+      setErrorMessage(err.message || "Terjadi kesalahan pada server saat memproses login.");
       setLoading(false);
     }
   };
 
-  const handleQuickFill = (role: "owner" | "karyawan") => {
-    setErrorMessage("");
-    if (role === "owner") {
-      setEmail("owner@craftbyhanifa.com");
-      setPassword("OwnerHanifa2026!");
-    } else {
-      setEmail("karyawan@craftbyhanifa.com");
-      setPassword("KaryawanHanifa2026!");
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryError("");
+    setRecoverySuccess("");
+
+    if (newPassword !== confirmPassword) {
+      setRecoveryError("Konfirmasi kata sandi baru tidak cocok.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setRecoveryError("Kata sandi baru minimal harus 6 karakter.");
+      return;
+    }
+
+    setRecoveryLoading(true);
+
+    try {
+      const result = await resetOwnerPasswordAction({
+        email: recoveryEmail,
+        recoveryPin,
+        newPassword,
+      });
+
+      if (!result.success) {
+        setRecoveryError(result.error || "Gagal memperbarui kata sandi.");
+        setRecoveryLoading(false);
+      } else {
+        setRecoverySuccess(result.message || "Kata sandi berhasil diperbarui!");
+        setRecoveryLoading(false);
+        // Pre-fill email di form login
+        setEmail(recoveryEmail);
+        setPassword("");
+        // Bersihkan form pemulihan
+        setRecoveryPin("");
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+    } catch (err: any) {
+      setRecoveryError(err.message || "Terjadi kesalahan saat mereset kata sandi.");
+      setRecoveryLoading(false);
     }
   };
 
@@ -133,6 +184,19 @@ export default function LoginPage() {
                 <label className="text-xs font-bold text-[#4A3B41]">
                   Kata Sandi
                 </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMessage("");
+                    setRecoveryError("");
+                    setRecoverySuccess("");
+                    setRecoveryEmail(email || "owner@craftbyhanifa.com");
+                    setShowRecoveryModal(true);
+                  }}
+                  className="text-[11px] font-semibold text-[#E0688A] hover:text-[#9B2C54] hover:underline cursor-pointer transition-colors"
+                >
+                  Lupa kata sandi?
+                </button>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#75656B]">
@@ -182,48 +246,10 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Quick Role Fill Section for Testing & Verification */}
-          <div className="pt-2 border-t border-[#F2DBE3] space-y-2.5">
-            <div className="flex items-center space-x-1.5 text-[11px] font-bold text-[#9B2C54]">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Akses Cepat Pengujian Role:</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickFill("owner")}
-                className="p-2.5 bg-[#FFF0F4] hover:bg-[#FFE4EC] border border-[#F2DBE3] rounded-xl text-left transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center space-x-1.5 text-xs font-bold text-[#9B2C54]">
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#E0688A]" />
-                  <span>Akun Owner</span>
-                </div>
-                <p className="text-[10px] text-[#75656B] mt-0.5 truncate">
-                  owner@craftbyhanifa.com
-                </p>
-                <span className="inline-block mt-1 text-[9px] font-semibold text-[#9B2C54] bg-white px-1.5 py-0.5 rounded border border-[#F2DBE3]">
-                  Akses Penuh
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickFill("karyawan")}
-                className="p-2.5 bg-[#F8F9FA] hover:bg-[#F0F2F5] border border-stone-200 rounded-xl text-left transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center space-x-1.5 text-xs font-bold text-stone-800">
-                  <UserCheck className="w-3.5 h-3.5 text-stone-600" />
-                  <span>Akun Karyawan</span>
-                </div>
-                <p className="text-[10px] text-[#75656B] mt-0.5 truncate">
-                  karyawan@craftbyhanifa.com
-                </p>
-                <span className="inline-block mt-1 text-[9px] font-semibold text-stone-600 bg-white px-1.5 py-0.5 rounded border border-stone-200">
-                  Kasir & Stok
-                </span>
-              </button>
-            </div>
+          {/* Info note */}
+          <div className="pt-3 border-t border-[#F2DBE3] flex items-center justify-center space-x-1.5 text-[11px] text-[#75656B]">
+            <HelpCircle className="w-3.5 h-3.5 text-[#E0688A] shrink-0" />
+            <span>Karyawan lupa sandi? Hubungi Owner untuk reset akun.</span>
           </div>
         </div>
 
@@ -232,6 +258,187 @@ export default function LoginPage() {
           Sistem Pembukuan UMKM CraftByHanifa &bull; Magetan, Jawa Timur
         </div>
       </div>
+
+      {/* MODAL PEMULIHAN KATA SANDI OWNER */}
+      {showRecoveryModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-[#F2DBE3] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-[#FFF0F4] p-5 border-b border-[#F2DBE3] flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-white border border-[#F2DBE3] flex items-center justify-center text-[#E0688A] shadow-xs">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#231C20]">
+                    Pemulihan Kata Sandi Owner
+                  </h3>
+                  <p className="text-[11px] text-[#75656B] mt-0.5">
+                    Gunakan PIN Rahasia Pemilik untuk membuat sandi baru
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRecoveryModal(false)}
+                className="text-[#75656B] hover:text-[#231C20] p-1 rounded-lg hover:bg-white/60 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 md:p-6 space-y-4">
+              {recoveryError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start space-x-2 text-rose-800 text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                  <div>{recoveryError}</div>
+                </div>
+              )}
+
+              {recoverySuccess ? (
+                <div className="space-y-4 text-center py-3">
+                  <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-emerald-800">
+                      Kata Sandi Berhasil Diperbarui!
+                    </h4>
+                    <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                      {recoverySuccess}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => setShowRecoveryModal(false)}
+                    className="w-full h-10 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer"
+                  >
+                    Kembali ke Halaman Login
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleResetPassword} className="space-y-3.5">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-[#4A3B41]">
+                      Email Akun Owner *
+                    </label>
+                    <Input
+                      type="email"
+                      required
+                      value={recoveryEmail}
+                      onChange={(e) => setRecoveryEmail(e.target.value)}
+                      placeholder="owner@craftbyhanifa.com"
+                      className="text-xs h-9 border-[#F2DBE3]"
+                      disabled={recoveryLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-[#4A3B41]">
+                        PIN Pemulihan Pemilik (Master PIN) *
+                      </label>
+                      <span className="text-[10px] text-[#75656B]">Kode Rahasia</span>
+                    </div>
+                    <Input
+                      type="password"
+                      required
+                      maxLength={12}
+                      value={recoveryPin}
+                      onChange={(e) => setRecoveryPin(e.target.value)}
+                      placeholder="Masukkan PIN Pemulihan"
+                      className="text-xs h-9 border-[#F2DBE3]"
+                      disabled={recoveryLoading}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-[#4A3B41]">
+                        Kata Sandi Baru *
+                      </label>
+                      <div className="relative">
+                        <Input
+                          type={showNewPassword ? "text" : "password"}
+                          required
+                          minLength={6}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Min 6 karakter"
+                          className="text-xs h-9 pr-8 border-[#F2DBE3]"
+                          disabled={recoveryLoading}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-[#75656B] hover:text-[#231C20] cursor-pointer"
+                          tabIndex={-1}
+                        >
+                          {showNewPassword ? (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-[#4A3B41]">
+                        Ulangi Sandi Baru *
+                      </label>
+                      <Input
+                        type={showNewPassword ? "text" : "password"}
+                        required
+                        minLength={6}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Konfirmasi"
+                        className="text-xs h-9 border-[#F2DBE3]"
+                        disabled={recoveryLoading}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-[#FFF0F4] rounded-xl border border-[#F2DBE3] text-[10px] text-[#9B2C54] leading-relaxed flex items-start space-x-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#E0688A]" />
+                    <span>
+                      Fitur ini khusus untuk Pemilik (Owner). Jangan beritahukan PIN Pemulihan Rahasia kepada pihak manapun.
+                    </span>
+                  </div>
+
+                  <div className="pt-2 flex items-center space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowRecoveryModal(false)}
+                      disabled={recoveryLoading}
+                      className="flex-1 h-9 text-xs border-stone-200 cursor-pointer"
+                    >
+                      Batal
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={recoveryLoading}
+                      className="flex-1 h-9 bg-gradient-to-r from-[#E0688A] to-[#E87A9B] hover:from-[#D45679] hover:to-[#E0688A] text-white text-xs font-semibold cursor-pointer"
+                    >
+                      {recoveryLoading ? (
+                        <div className="flex items-center space-x-1.5">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Menyimpan...</span>
+                        </div>
+                      ) : (
+                        <span>Simpan Sandi Baru</span>
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
