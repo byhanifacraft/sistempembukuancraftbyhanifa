@@ -1,3 +1,4 @@
+import { cache } from "react";
 import prisma from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { UserRole } from "@prisma/client";
@@ -23,14 +24,10 @@ export function setMockUserForTesting(user: SessionUser | null) {
 }
 
 /**
- * Mendapatkan data pengguna yang sedang login dari session cookie Supabase SSR.
- * Mengembalikan null jika belum terautentikasi.
+ * Resolusi internal sesi pengguna yang di-memoize per-request menggunakan React.cache()
+ * sehingga pemanggilan ganda di RootLayout + Page tidak memicu kueri berulang ke Supabase & DB.
  */
-export async function getCurrentAuthUser(): Promise<SessionUser | null> {
-  if (mockUserForTesting) {
-    return mockUserForTesting;
-  }
-
+const resolveAuthUserPerRequest = cache(async (): Promise<SessionUser | null> => {
   try {
     const supabase = await createClient();
     const {
@@ -42,7 +39,7 @@ export async function getCurrentAuthUser(): Promise<SessionUser | null> {
       return null;
     }
 
-    // Ambil metadata dari session atau database Prisma
+    // Ambil metadata dari database Prisma
     const dbUser = await prisma.user.findUnique({
       where: { id: authUser.id },
       select: {
@@ -60,7 +57,8 @@ export async function getCurrentAuthUser(): Promise<SessionUser | null> {
 
     // Jika belum sinkron di Prisma, gunakan metadata Supabase Auth
     const role = (authUser.user_metadata?.role as UserRole) || UserRole.STAFF;
-    const name = authUser.user_metadata?.name || authUser.email?.split("@")[0] || "User";
+    const name =
+      authUser.user_metadata?.name || authUser.email?.split("@")[0] || "User";
 
     const createdUser = await prisma.user.create({
       data: {
@@ -82,6 +80,17 @@ export async function getCurrentAuthUser(): Promise<SessionUser | null> {
   } catch {
     return null;
   }
+});
+
+/**
+ * Mendapatkan data pengguna yang sedang login dari session cookie Supabase SSR.
+ * Mengembalikan null jika belum terautentikasi.
+ */
+export async function getCurrentAuthUser(): Promise<SessionUser | null> {
+  if (mockUserForTesting) {
+    return mockUserForTesting;
+  }
+  return resolveAuthUserPerRequest();
 }
 
 /**

@@ -1,0 +1,44 @@
+name: Supabase Keep-Alive Heartbeat
+
+on:
+  schedule:
+    # Berjalan otomatis setiap hari pukul 03:30 UTC (10:30 WIB) agar proyek Supabase Free tidak pernah ter-pause
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Endpoint Keep-Alive Aplikasi / Supabase API
+        env:
+          APP_URL: ${{ vars.APP_URL || secrets.APP_URL || '' }}
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || vars.NEXT_PUBLIC_SUPABASE_URL || 'https://abplmhcjqaiwsnczxbac.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || '' }}
+        run: |
+          echo "Memulai pengecekan Keep-Alive pada $(date -u +"%Y-%m-%dT%H:%M:%SZ")..."
+
+          # 1. Ping Supabase Auth Health secara langsung
+          if [ -n "$SUPABASE_URL" ]; then
+            echo "Pinging Supabase Auth Gateway: $SUPABASE_URL/auth/v1/health"
+            curl -sS -o /dev/null -w "Supabase Auth HTTP Status: %{http_code}\n" "$SUPABASE_URL/auth/v1/health" || true
+          fi
+
+          # 2. Ping Supabase REST API jika SUPABASE_ANON_KEY tersedia di GitHub Secrets
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+            echo "Pinging Supabase REST Gateway..."
+            curl -sS -o /dev/null -w "Supabase REST HTTP Status: %{http_code}\n" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+              "$SUPABASE_URL/rest/v1/units?select=id&limit=1" || true
+          fi
+
+          # 3. Ping Vercel /api/keep-alive jika APP_URL dikonfigurasi
+          if [ -n "$APP_URL" ]; then
+            CLEAN_URL="${APP_URL%/}"
+            echo "Pinging App Keep-Alive Endpoint: $CLEAN_URL/api/keep-alive"
+            curl -sS "$CLEAN_URL/api/keep-alive" || true
+          fi
+
+          echo "Keep-Alive selesai!"

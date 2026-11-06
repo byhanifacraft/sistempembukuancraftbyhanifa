@@ -187,18 +187,16 @@ export async function createProduct(formData: unknown, userId?: string) {
         },
       });
 
-      // 2. Create BOM Recipe items
+      // 2. Create BOM Recipe items in a single batch query
       if (validated.bomItems && validated.bomItems.length > 0) {
-        for (const item of validated.bomItems) {
-          await tx.billOfMaterial.create({
-            data: {
-              productId: product.id,
-              rawMaterialId: item.rawMaterialId,
-              quantityNeeded: item.quantityNeeded,
-              notes: item.notes?.trim() || null,
-            },
-          });
-        }
+        await tx.billOfMaterial.createMany({
+          data: validated.bomItems.map((item) => ({
+            productId: product.id,
+            rawMaterialId: item.rawMaterialId,
+            quantityNeeded: item.quantityNeeded,
+            notes: item.notes?.trim() || null,
+          })),
+        });
       }
 
       // 3. Initial stock mutation if STOCK_BASED and currentStock > 0
@@ -281,16 +279,14 @@ export async function updateProduct(id: string, formData: unknown) {
       });
 
       if (validated.bomItems && validated.bomItems.length > 0) {
-        for (const item of validated.bomItems) {
-          await tx.billOfMaterial.create({
-            data: {
-              productId: id,
-              rawMaterialId: item.rawMaterialId,
-              quantityNeeded: item.quantityNeeded,
-              notes: item.notes?.trim() || null,
-            },
-          });
-        }
+        await tx.billOfMaterial.createMany({
+          data: validated.bomItems.map((item) => ({
+            productId: id,
+            rawMaterialId: item.rawMaterialId,
+            quantityNeeded: item.quantityNeeded,
+            notes: item.notes?.trim() || null,
+          })),
+        });
       }
 
       return updated;
