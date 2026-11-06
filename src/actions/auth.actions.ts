@@ -73,6 +73,81 @@ export async function loginAction(formData: {
 }
 
 /**
+ * Server Action untuk Login Cepat (1-Klik) sesuai role (Owner / Karyawan)
+ */
+export async function quickLoginAction(
+  targetRole: "OWNER" | "STAFF"
+): Promise<LoginResult> {
+  const credentials =
+    targetRole === "OWNER"
+      ? {
+          email: "owner@craftbyhanifa.com",
+          password: "OwnerHanifa2026!",
+        }
+      : {
+          email: "karyawan@craftbyhanifa.com",
+          password: "KaryawanHanifa2026!",
+        };
+
+  try {
+    const supabase = await createClient();
+    let { data, error } = await supabase.auth.signInWithPassword({
+      email: credentials.email,
+      password: credentials.password,
+    });
+
+    // Jika kata sandi sempat berubah, sinkronkan kembali agar login cepat selalu berfungsi
+    if (error || !data.user) {
+      const hashRes: any = await prisma.$queryRaw`
+        SELECT crypt(${credentials.password}, gen_salt('bf', 10)) as hashed;
+      `;
+      const hashed = hashRes[0]?.hashed;
+      if (hashed) {
+        await prisma.$executeRaw`
+          UPDATE auth.users
+          SET encrypted_password = ${hashed}, updated_at = NOW()
+          WHERE email = ${credentials.email};
+        `;
+        const retry = await supabase.auth.signInWithPassword({
+          email: credentials.email,
+          password: credentials.password,
+        });
+        data = retry.data;
+        error = retry.error;
+      }
+    }
+
+    if (error || !data.user) {
+      return {
+        success: false,
+        error: "Gagal melakukan login cepat. Pastikan akun sudah tersedia.",
+      };
+    }
+
+    const authUser = await getCurrentAuthUser();
+    revalidatePath("/", "layout");
+
+    return {
+      success: true,
+      user: authUser
+        ? {
+            id: authUser.id,
+            email: authUser.email,
+            name: authUser.name,
+            role: authUser.role,
+          }
+        : undefined,
+    };
+  } catch (err: any) {
+    console.error("Error pada quickLoginAction:", err);
+    return {
+      success: false,
+      error: err.message || "Terjadi kesalahan saat memproses login cepat.",
+    };
+  }
+}
+
+/**
  * Server Action untuk logout pengguna
  */
 export async function logoutAction() {

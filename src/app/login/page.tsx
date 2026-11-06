@@ -3,7 +3,11 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { loginAction, resetOwnerPasswordAction } from "@/actions/auth.actions";
+import {
+  loginAction,
+  quickLoginAction,
+  resetOwnerPasswordAction,
+} from "@/actions/auth.actions";
 import {
   Lock,
   Mail,
@@ -11,12 +15,14 @@ import {
   EyeOff,
   LogIn,
   ShieldCheck,
+  UserCheck,
   AlertCircle,
   Loader2,
   KeyRound,
   CheckCircle2,
   X,
   HelpCircle,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +37,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [quickLoadingRole, setQuickLoadingRole] = useState<"OWNER" | "STAFF" | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
   // Recovery modal states
@@ -65,6 +72,36 @@ export default function LoginPage() {
     } catch (err: any) {
       setErrorMessage(err.message || "Terjadi kesalahan pada server saat memproses login.");
       setLoading(false);
+    }
+  };
+
+  const handleQuickLogin = async (role: "OWNER" | "STAFF") => {
+    setErrorMessage("");
+    setQuickLoadingRole(role);
+    setLoading(true);
+
+    if (role === "OWNER") {
+      setEmail("owner@craftbyhanifa.com");
+      setPassword("OwnerHanifa2026!");
+    } else {
+      setEmail("karyawan@craftbyhanifa.com");
+      setPassword("KaryawanHanifa2026!");
+    }
+
+    try {
+      const result = await quickLoginAction(role);
+      if (!result.success) {
+        setErrorMessage(result.error || "Gagal masuk menggunakan akses cepat.");
+        setLoading(false);
+        setQuickLoadingRole(null);
+      } else {
+        router.push(redirectedFrom);
+        router.refresh();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Terjadi kesalahan saat memproses login cepat.");
+      setLoading(false);
+      setQuickLoadingRole(null);
     }
   };
 
@@ -232,7 +269,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full h-11 bg-gradient-to-r from-[#E0688A] to-[#E87A9B] hover:from-[#D45679] hover:to-[#E0688A] text-white font-semibold text-xs shadow-md shadow-pink-500/20 transition-all cursor-pointer"
             >
-              {loading ? (
+              {loading && !quickLoadingRole ? (
                 <div className="flex items-center space-x-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Memverifikasi Sesi...</span>
@@ -245,6 +282,78 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          {/* Opsi Login Cepat (Simple & Sesuai Desain Pembukuan) */}
+          <div className="pt-4 border-t border-[#F2DBE3] space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-[#75656B] uppercase tracking-wider">
+                Login Cepat (1-Klik)
+              </span>
+              <span className="text-[10px] text-[#9B2C54] font-medium">
+                Pilih Peran Akun
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Quick Login Owner */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleQuickLogin("OWNER")}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-[#FFF5F8]/80 hover:bg-[#FFF0F4] border border-[#F2DBE3] hover:border-[#E0688A] text-left transition-all cursor-pointer group disabled:opacity-60"
+              >
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-pink-100 text-[#9B2C54] border border-pink-200 flex items-center justify-center font-bold text-xs shrink-0">
+                    {quickLoadingRole === "OWNER" ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#9B2C54]" />
+                    ) : (
+                      <ShieldCheck className="w-4 h-4 text-[#E0688A]" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center space-x-1">
+                      <p className="text-xs font-bold text-[#231C20] truncate group-hover:text-[#9B2C54] transition-colors">
+                        Owner
+                      </p>
+                    </div>
+                    <p className="text-[10px] text-[#75656B] truncate">
+                      Akses Penuh
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-[#75656B] group-hover:text-[#E0688A] shrink-0 transition-transform group-hover:translate-x-0.5" />
+              </button>
+
+              {/* Quick Login Karyawan */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleQuickLogin("STAFF")}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-[#FFF5F8]/80 hover:bg-emerald-50/70 border border-[#F2DBE3] hover:border-emerald-300 text-left transition-all cursor-pointer group disabled:opacity-60"
+              >
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center justify-center font-bold text-xs shrink-0">
+                    {quickLoadingRole === "STAFF" ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                    ) : (
+                      <UserCheck className="w-4 h-4 text-emerald-700" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center space-x-1">
+                      <p className="text-xs font-bold text-[#231C20] truncate group-hover:text-emerald-800 transition-colors">
+                        Karyawan
+                      </p>
+                    </div>
+                    <p className="text-[10px] text-[#75656B] truncate">
+                      Kasir & Stok
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-[#75656B] group-hover:text-emerald-600 shrink-0 transition-transform group-hover:translate-x-0.5" />
+              </button>
+            </div>
+          </div>
 
           {/* Info note */}
           <div className="pt-3 border-t border-[#F2DBE3] flex items-center justify-center space-x-1.5 text-[11px] text-[#75656B]">
